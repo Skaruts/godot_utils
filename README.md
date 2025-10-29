@@ -1,2 +1,1 @@
-# godot_utils
-Some assorted Godot utilities
+A repository of Godot utilities I developed over time.
