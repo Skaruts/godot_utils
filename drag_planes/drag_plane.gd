@@ -134,8 +134,8 @@ func compute_intersection() -> void:
 
 
 ## Sets the correct position on the [param node] dragged object. If you need
-## more control over how this is applied, then use the 'intersection' property
-## instead.
+## more control over how this is applied, you can access the 'intersection'
+## property directly instead.
 func set_target_position(node: Node3D) -> void:
 	var pos := node.global_position
 	match _axis:
