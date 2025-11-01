@@ -22,7 +22,7 @@
 # SOFTWARE.
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-#        DrawTool3D (Godot 4)        (version 16 - WIP)
+#        DrawTool3D (Godot 4)        (version 18 - WIP)
 #
 #
 #    - Uses MultiMeshes for lines, cones, spheres, cubes...
@@ -118,53 +118,107 @@ extends Node3D
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 
 # 		User settings (change BEFORE adding as child)
+#       I'm not sure what happens if you change these in the inspector (not tested).
 
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-var see_through_geometry := false
+#@export_subgroup("Settings")
+## If true, a second pass material will makes visible lines behind world geometry
+## using the [param backline_color] color.
+@export var see_through_geometry := false
 
-var render_priority     := 0  # base render_priority for the materials
-var single_color        := false
-var use_only_thin_lines := false
+## The render priority for the materials. You can adjust this if you need
+## to control the order in which multiple [DrawTool3D]s are drawn.
+@export var render_priority     := 0  # base render_priority for the materials
 
-var line_thickness := 1.0
-var unshaded       := true
-var no_shadows     := true # for materials  (TODO: there should be only one option for this)
-var cast_shadows   := GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # for meshes
-var on_top         := false  # no depth test
-var transparent    := false
-var double_sided   := false  # for the faces
+## Use only a single color for all lines (and another single color for backlines,
+## if applicable), instead of a color per line. If this is true, then colors
+## passed into the drawing functions will be ignored.
+@export var single_color        := false
 
-# How thin must the unit-cube be in order to properly represent a line
-# of thickness 1. Lines will look too thick or too thin from too close
-# or too afar, so this must be tweaked according to the intended usage.
-var width_factor := 0.01
+## If true, the [DrawTool3D] will only use the fallback lines,
+## with 1px thickness (using an ImmediateMesh).
+@export var use_only_thin_lines := false
 
-# How many instances to add to the MultiMeshInstance when the pool is full
-var instance_increment := 64
+## The default line_thickness. This will be used when no thickness value is
+## passed into the drawing functions.
+@export var line_thickness := 1.0
 
-# The initial_amount of instances in the MultiMeshInstance3D
-# NOTE: since the latest Godot 4.x, this tool can no longer grow the instance
-#       counts dynamically as changing the 'instance_count' on the
-#       MultiMeshInstance3D now clears its internal mesh buffers.
-#       For now, you need to set a high-enough 'instance_amount' and rely only on that.
-var instance_amount               := 64
+## How thin must the unit-cube be in order to properly represent a line
+## of thickness 1. Depending on this value, Lines may look too thin from afar
+## or too thick from close up, so this must be tweaked according to the
+## intended usage.
+@export var width_factor := 0.01
 
-var sphere_radial_segments        := 24
-var sphere_rings                  := 12
-var hollow_sphere_radial_segments := 8
-var hollow_sphere_rings           := 6
-var circle_segments               := 32
+## How many instances to add to the [MultiMeshInstance] when the pool is full.
+## [br][br]
+## [b]NOTE:[/b] this stopped working somwhere between Godot 4.2 and 4.4, as
+## changing the [param MultiMeshInstance.instance_count] now also clears the internal
+## mesh buffers, so this feature can't be used.
+#@export var instance_increment := 64
+
+## The initial amount of instances in the [MultiMeshInstance3D]
+## [br][br]
+## [b]NOTE:[/b]: since the latest Godot 4.x, this tool can no longer grow
+## the instance counts dynamically, as changing the
+## [param instance_count] on the [b]MultiMeshInstance[/b] now clears its internal mesh buffers.
+## So for now, you need to set a high-enough [param instance_amount] and rely
+## solely only on that.
+@export var instance_amount := 64
+
+
+@export_subgroup("Materials")
+
+## The shading mode. If true, the materials will be fullbright.
+@export var unshaded       := true
+## If true, the materials will cast no shadows.
+@export var no_shadows     := true # for materials  (TODO: there should be only one option for this)
+
+## If true, lines/faces will be seen through the world geometry.
+@export var on_top         := false  # no depth test
+
+## Whether transparency is active or not.
+@export var transparent    := false
+
+## If true, faces will be double sided. This doesn't affect lines.
+@export var double_sided   := false  # for the faces
+
+
+@export_subgroup("Geometry")
+## The amount of radial segments used to create filled spheres.
+@export var sphere_radial_segments        := 24
+## The amount of rings used to create filled spheres.
+@export var sphere_rings                  := 12
+## The amount of rings used to create hollow spheres.
+@export var hollow_sphere_radial_segments := 8
+## The amount of rings used to create hollow spheres.
+@export var hollow_sphere_rings           := 6
+## The amount of segments used to create circles.
+@export var circle_segments               := 32
+
+## The amount of segments used to create the cylinders that make up the lines.
 var cylinder_radial_segments      := 5
 
-var line_color     := Color.WHITE
-var backline_color := Color.WHITE.darkened(darken_factor)
-var face_color     := line_color
-var backface_color := backline_color
+@export_subgroup("Colors")
+## The default color used to make lines. [br][br]Can be overriden in the drawing
+## functions, unless [param use_single_color] is true.
+@export var line_color     := Color.WHITE
 
-var back_alpha := 0.1
-var face_alpha := 0.5
-var darken_factor := 0.5
+## The default color used to make faces.
+@export var face_color     := Color.WHITE
 
+## The default color used to make the backlines. (The lines that are seen
+## through world geometry when [param see_through_geometry] is true.)
+## [br][br]Can be overriden in the drawing functions, unless [param use_single_color] is true.
+@export var backline_color := Color.BLACK
+
+## The default color used to make the backfaces. (The faces that are seen
+## through world geometry when [param see_through_geometry] is true.)
+@export var backface_color := Color.BLACK
+
+
+#@export var back_alpha := 0.1
+#@export var face_alpha := 0.5
+#@export var darken_factor := 0.5
 
 
 
@@ -177,7 +231,7 @@ var darken_factor := 0.5
 enum {A,B,C,D,E,F,G,H}
 
 const _DOT_THRESHOLD := 0.999
-const _USE_CYLINDERS_FOR_LINES := false  # keep this false, my cylinders code is not working in Godot 4
+const _USE_CYLINDERS_FOR_LINES := false  # keep this false, the cylinders code is not working in Godot 4
 
 var _multi_meshes      : Dictionary                # MultiMeshes
 var _im_faces          : ImmediateMesh
@@ -196,10 +250,6 @@ var _im_faces_fore_mat : StandardMaterial3D
 
 func _ready() -> void:
 	name = "DrawTool3D"
-
-	backline_color = line_color.darkened(darken_factor) # Color(line_color, back_alpha)
-	face_color     = line_color.darkened(darken_factor) # Color(line_color, face_alpha)
-	backface_color = backline_color.darkened(darken_factor) # Color(face_color, back_alpha)
 
 	_labels_root = Node3D.new()
 	add_child(_labels_root)
@@ -364,9 +414,10 @@ func _create_multimesh(mesh:Mesh, name:String) -> MultiMesh:
 	mmi.name = name
 	mmi.multimesh = mm
 
+	var cast_shadows := GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if no_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	# for some reason only the setter function seems to work (last I checked)
-	#mmi.set("cast_shadows", 0 as GeometryInstance3D.ShadowCastingSetting)
-	#mmi.cast_shadows = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	#mmi.set("cast_shadows", cast_shadows as GeometryInstance3D.ShadowCastingSetting)
+	#mmi.cast_shadows = cast_shadows
 	mmi.set_cast_shadows_setting(cast_shadows)
 
 	add_child(mmi)
@@ -800,11 +851,11 @@ func clear() -> void:
 	_im_fallback_lines.clear_surfaces()
 
 
-func draw_line(a:Vector3, b:Vector3, color:Color, thickness:=line_thickness) -> void:
+func draw_line(a:Vector3, b:Vector3, color:Color=line_color, thickness:=line_thickness) -> void:
 	_add_line(a, b, color, thickness)
 
 
-func draw_lines(lines: PackedVector3Array, color: Color, thickness:= line_thickness) -> void:
+func draw_lines(lines: PackedVector3Array, color: Color=line_color, thickness:= line_thickness) -> void:
 	assert(lines.size() % 2 == 0) # vertices must be even number
 	for i in range(0, lines.size(), 2):
 		_add_line(lines[i], lines[i+1], color, thickness)
