@@ -1,59 +1,70 @@
 # Drag Planes
 
-These classes facilitate dragging objects in 3D space. Use one or the other, not both. They're just different approaches to the exact same thing, and their usage is mostly identical. 
+The purpose of this tool is to drag objects in 3D space using the mouse. Use one or the other, not both. They're just different approaches to the exact same thing, and their usage is identical.
 
 
-- `DragPlane` manually projects a ray from the mouse position, and uses a `Plane` to check for an intersection with the ray. Can be simpler to use than `DragPlaneShape`.
+- `DragPlaneEquation` projects a ray from the mouse position, and uses a `Plane` object to check for an intersection with the ray.
 
-- `DragPlaneShape` is a `StaticBody3D` and detects ray picking using a `WorldBoundaryShape3D`. It may conflict with other `input_ray_pickable` nodes and require a more mindful usage. Since this uses a `CollisionShape3D`, it can also be visualized at runtime when turning on `Debug -> Visible Collision Shapes`. 
+- `DragPlaneShape` is a `StaticBody3D` and detects ray picking using a `WorldBoundaryShape3D`. It may conflict with other `input_ray_pickable` nodes and require a more mindful usage.
+
+The first one has the slight advantage that it only involves a single node and it probably has no picking conflicts, but the second one can be visualized at runtime when `Debug -> Visible Collision Shapes` is enabled.
+
 
 ## Example Usage
 
+Create a `DragPlaneEquation` or `DragPlaneShape` object just like you would
+create any other node, either by placing it in the scene tree, or through code.
+
+
+```gdscript
+var drag_plane: DragPlaneShape
+
+func _ready() -> void:
+	drag_plane = DragPlaneShape.new()
+	add_child(drag_plane)
+```
+
+### Starting to drag
 The code for starting the dragging is the same for both.
 
+You can grab your objects manually if you prefer, but the example here uses an `input_ray_pickable` object `my_object` which has its `input_event` signal connected to the function below. (Only the `event` parameter is used.)
+
 ```gdscript
-# Assuming 'my_object' is 'input_ray_pickable' and its 'input_event' signal is connected
-# (Although you can grab your objects in other ways if you prefer.)
+func _on_my_object_input_event(camera: Node, event: InputEvent, event_position: Vector3, click_normal: Vector3, shape_idx: int) -> void:
+	if event is InputEventMouseButton \
+	and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		# turn off input events on the dragged object while it's being dragged
+		my_object.input_ray_pickable = false
 
-func _on_my_object_input_event(camera:Node, event:InputEvent, event_position:Vector3, click_normal:Vector3, shape_idx:int) -> void:
-	if event.is_action_pressed("editor_select"):
-		my_object.input_ray_pickable = false  # stop receiving input events while dragging
+		# start dragging along one or two axes (use one or the other, not both)
+		drag_plane.start_dragging(my_object.global_position, my_object.basis.x)
+		drag_plane.start_dragging(my_object.global_position, my_object.basis.x, my_object.basis.z)
 
-		# use one of below (not both), and use the respective class to access the Axis enum 
-		drag_plane.start_dragging(my_object.global_position, DragPlane.Axis.X)
-		# drag_plane.start_dragging_node(my_object, DragPlane.Axis.X)
 ```
 
-The rest of the code is slightly different.
+If you specify one axis, the dragging will be calculated along that single axis. If you specify two axes, the dragging will be calculated along the plane formed by those two axes.
 
-### DragPlane:
+To specify the dragging axes you can use the object's `basis` or `global_basis`, but you can also use other direction vectors of your choice, and they don't have to be related to a `Node3D`. Whatever you do with the dragging results is up to you.
+
+###### Note: when using two axes, they are expected to be two perpendicular directions that represent a flat movement plane. The code internally uses a cross product to determine the facing of the plane, so it may still work with non-perpendicular vectors, as long as they're not pointing in the exact same direction. This hasn't been tested, though.
+
+
+### Getting dragging results / stop dragging
+The rest of the code is also the same for both, except one relies on `_unhandled_input` and the other can use the `_on_drag_plane_input_event` signal callback (and you must connect the signal to it).
+
+
 ```gdscript
+# DragPlaneEquation
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_released("editor_select"):
-		drag_plane.stop_dragging()
-		my_object.input_ray_pickable = true
-	
-	if event is InputEventMouseMotion and drag_plane.is_dragging:
-		drag_plane.compute_intersection()
-		
-		# if `start_dragging_node` was used, then don't use any of the lines below 
-		drag_plane.set_target_position(my_object)
-		# my_object.global_position.x = drag_plane.intersection.x  # set the respective axis that was specified above
 
-```
+# DragPlaneShape
+func _on_drag_plane_input_event(camera: Node, event: InputEvent, event_position: Vector3, click_normal: Vector3, shape_idx: int) -> void:
 
-### DragPlaneShape:
-```gdscript
-# Assuming the DragPlaneShape's 'input_event' is connected
-
-func _on_drag_plane_input_event(camera:Node, event:InputEvent, event_position:Vector3, click_normal:Vector3, shape_idx:int) -> void:
-	if event.is_action_released("editor_select"):
-		drag_plane.stop_dragging()
-		my_object.input_ray_pickable = true
-	
-	# if `start_dragging_node` was used, then don't use the lines below
-	if event is InputEventMouseMotion:
-		drag_plane.set_target_position(my_object)
-		# my_object.global_position.x = drag_plane.intersection.x  # set the respective axis that was specified above
-
+# code for either of the above
+    if event is InputEventMouseButton and not event.pressed:
+        my_object.input_ray_pickable = true
+        drag_plane.stop_dragging()
+    elif event is InputEventMouseMotion:
+        if drag_plane.is_dragging:
+            my_object.global_position = drag_plane.get_drag_position()
 ```

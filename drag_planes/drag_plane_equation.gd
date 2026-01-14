@@ -22,21 +22,20 @@
 # SOFTWARE.
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 #
-#         DragPlaneShape        (version 19)
+#         DragPlane        (version 7)
 #
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-class_name DragPlaneShape
-extends StaticBody3D
+class_name DragPlaneEquation
+extends Node3D
 
 ##
 ## A utility node for detecting mouse dragging in 3D space.
 ## [br][br]
 ##
 ## A helper node for detecting mouse dragging of 3D objects, to allow moving
-## them in one or more axes.
+## them along one or two axes.
 ## [br][br]
 ##
-
 
 ## Will be true while dragging mode is active.
 ## [br][br]
@@ -51,76 +50,51 @@ var intersection: Vector3:
 	get: return _intersection
 
 
+var _is_dragging  : bool
+var _intersection : Vector3
 var _axis1        : Vector3
 var _axis2        : Vector3
 var _target_pos   : Vector3
-var _intersection : Vector3
-var _collider     : CollisionShape3D
-var _is_dragging  : bool
-
-var _debugging    := false
-var _dt: DrawTool3D
+var _plane        : Plane
 
 
-func _ready() -> void:
-	if _debugging:
-		_dt = DrawTool3D.new()
-		add_child(_dt)
-
-	_collider = CollisionShape3D.new()
-	_collider.shape = WorldBoundaryShape3D.new()
-	_collider.shape.plane = -Plane.PLANE_XY
-
-	add_child(_collider)
-	stop_dragging()
-
-
-func _input_event(camera: Node, event: InputEvent, event_position: Vector3, normal: Vector3, shape_idx: int) -> void:
-	_intersection = event_position
-	_adjust_facing()
-
-
-#NOTE: uncommented only for debugging purposes
-#func _process(delta: float) -> void:
-	#_adjust_facing()
-
-
-func _set_axis(axis1: Vector3, axis2 := Vector3.ZERO) -> void:
-	_axis1 = axis1
-	_axis2 = axis2
-
-
-func _adjust_facing() -> void:
-	if _debugging: _dt.clear()
+func _calculate_plane() -> void:
 	if _axis1 == Vector3.ZERO: return
 
 	var camera: Camera3D = get_viewport().get_camera_3d()
 	var cam_pos:Vector3 = camera.global_position
 
 	var a := cam_pos
-	var b := _collider.global_position
+	var b := _target_pos
+	var direction: Vector3
 
 	if _axis2 == Vector3.ZERO or _axis2 == _axis1:
 		var d := _axis1
 		var c := a + ( (b-a).dot(d) / (pow(d.length(), 2))  ) * d
-		var up_vec := Vector3.UP if b.direction_to(c) != Vector3.UP else Vector3.RIGHT  # is this ok?
-		_collider.look_at(c, up_vec)
+		direction = _target_pos.direction_to(c)
 	else:
 		var cross := _axis1.cross(_axis2)
-		var c := _collider.global_position+cross
+		var c := _target_pos + cross
+		direction = _target_pos.direction_to(c)
 
-		if b.direction_to(c).dot(b.direction_to(a)) < 0:
-			cross = _axis2.cross(_axis1)
-			c = _collider.global_position+cross
+	_plane = Plane(direction, _target_pos)
 
-		var up_vec := Vector3.UP if cross != Vector3.UP else Vector3.RIGHT  # is this ok?
-		_collider.look_at(c, up_vec)
+
+func _get_mouse_position_on_plane() -> Vector3:
+	var camera: Camera3D = get_viewport().get_camera_3d()
+
+	var mouse_pos := get_viewport().get_mouse_position()
+	var ray_origin := camera.project_ray_origin(mouse_pos)
+	var ray_dir := camera.project_ray_normal(mouse_pos)
+
+	var intersection_point: Variant = _plane.intersects_ray(ray_origin, ray_dir)
+	return intersection_point if intersection_point else _target_pos
 
 
 
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 
-#		Public API
+# 		Public API
 
 #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 ## Initializes dragging mode based on [param target_position]. If [param axis2]
@@ -129,23 +103,21 @@ func _adjust_facing() -> void:
 ## [br][br]
 ## The parameter [param target_position] must be in global space.
 func start_dragging(target_position: Vector3, axis1: Vector3, axis2 := Vector3.ZERO) -> void:
-	input_ray_pickable = true
 	_is_dragging = true
 	_target_pos = target_position
-	_collider.transform.basis = Basis()
-	_collider.global_position = target_position
-	_set_axis(axis1, axis2)
-	_adjust_facing()
+	_axis1 = axis1
+	_axis2 = axis2
+	_calculate_plane()
 
 
 ## Ends dragging mode.
 func stop_dragging() -> void:
 	_is_dragging = false
-	input_ray_pickable = false
 
 
 ## Returns the position where the object at [param position] is being dragged to.
 func get_drag_position() -> Vector3:
+	_intersection = _get_mouse_position_on_plane()
 	if _axis2 == Vector3.ZERO or _axis2 == _axis1:
 		var a := _target_pos
 		var b := _intersection
